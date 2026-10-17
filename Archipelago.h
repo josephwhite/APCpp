@@ -178,6 +178,8 @@ std::uint64_t AP_GetUUID();
 int AP_GetPlayerID();
 void AP_UpdateTags(std::vector<std::string> const& tags);
 
+void AP_SetDataPackageCacheDir(std::string const& path);
+
 /* Serverside Data Types */
 
 enum struct AP_RequestStatus {
