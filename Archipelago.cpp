@@ -411,6 +411,11 @@ void AP_UpdateTags(std::vector<std::string> const& tags)
     APSend(writer.write(req_t));
 }
 
+void AP_SetDataPackageCacheDir(std::string const& path)
+{
+    datapkg_cache_dir = path;
+}
+
 void AP_StoryComplete() {
     if (!multiworld) return;
     Json::Value req_t;
@@ -1172,6 +1177,7 @@ void parseDataPkg(const std::string& game, Json::Value& package)
 }
 
 bool loadDataPkg(const std::string& game, const std::string& hash) {
+    // Return false to redownload corrupt/malformed Json files
     std::filesystem::path cache_path = getDataPkgCachePath(game, hash);
     std::ifstream cache_file(cache_path);
     if (!cache_file.is_open()) return false;
@@ -1183,7 +1189,7 @@ bool loadDataPkg(const std::string& game, const std::string& hash) {
         parseDataPkg(game, datapkg);
     }
     catch (...) {
-        return false; // Redownload corrupt/malformed Json files
+        return false;
     }
     return true;
 }
