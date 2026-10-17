@@ -15,7 +15,7 @@ extern std::function<void(std::string)> logfunc;
 
 extern const int AP_OFFLINE_SLOT;
 
-void WriteFileJSON(Json::Value root, std::string path);
+bool WriteFileJSON(Json::Value root, std::string path);
 bool parse_response(std::string msg, std::string &request);
 
 void operation_replace(std::string key, Json::Value new_val) {
