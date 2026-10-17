@@ -120,7 +120,7 @@ Json::Value sp_ap_root;
 void AP_Init_Generic();
 bool parse_response(std::string msg, std::string &request);
 void APSend(std::string req);
-void WriteFileJSON(Json::Value val, std::string path);
+bool WriteFileJSON(Json::Value val, std::string path);
 std::string getItemName(std::string game, int64_t id);
 std::string getLocationName(std::string game, int64_t id);
 AP_NetworkPlayer getPlayer(int team, int slot);
@@ -302,6 +302,7 @@ void AP_Shutdown() {
     map_slotdata_callback_raw.clear();
     map_slotdata_callback_mapintint.clear();
     sp_ap_root = Json::objectValue;
+    datapkg_outdated_games.clear();
 }
 
 bool AP_IsInit() {
@@ -728,7 +729,11 @@ void AP_RegisterBouncedCallback(std::function<void(AP_Bounce)> f_bounced) {
 
 void AP_Init_Generic() {
     ap_player_name_hash = std::hash<std::string>{}(ap_player_name);
-    std::filesystem::create_directory(datapkg_cache_dir);
+    std::error_code ec;
+    std::filesystem::create_directory(datapkg_cache_dir, ec);
+    if (ec) {
+        logfunc("AP: Warning: could not create data package cache directory '" + datapkg_cache_dir.string() + "': " + ec.message());
+    }
 }
 
 bool parse_response(std::string msg, std::string &request) {
@@ -1108,13 +1113,41 @@ void APSend(std::string req) {
     webSocket.send(req);
 }
 
-void WriteFileJSON(Json::Value val, std::string path) {
-    std::ofstream out;
-    out.open(path);
-    out.seekp(0);
-    out << writer.write(val).c_str();
-    out.flush();
-    out.close();
+bool WriteFileJSON(Json::Value val, std::string path) {
+    // False is returned if writing to path failed
+    std::filesystem::path target(path);
+    std::filesystem::path tmp = target;
+    tmp += ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::out | std::ios::trunc | std::ios::binary);
+        if (!out.is_open()) {
+            logfunc("AP: Warning: could not open '" + tmp.string() + "' for writing.");
+            return false;
+        }
+        out << writer.write(val).c_str();
+        out.flush();
+        if (!out.good()) {
+            logfunc("AP: Warning: failed writing '" + tmp.string() + "'.");
+            out.close();
+            std::error_code rmec;
+            std::filesystem::remove(tmp, rmec);
+            return false;
+        }
+    }
+    // Replace file
+    std::error_code ec;
+    std::filesystem::rename(tmp, target, ec);
+    if (ec) {
+        // Try copying if failed
+        std::error_code cpec;
+        std::filesystem::copy_file(tmp, target, std::filesystem::copy_options::overwrite_existing, cpec);
+        std::error_code rmec;
+        std::filesystem::remove(tmp, rmec);
+        if (cpec) {
+            logfunc("AP: Warning: could not write '" + target.string() + "': " + cpec.message());
+            return false;
+        }
+    }
 }
 
 std::filesystem::path getDataPkgCachePath(const std::string& game, const std::string& hash)
@@ -1144,7 +1177,9 @@ bool loadDataPkg(const std::string& game, const std::string& hash) {
     if (!cache_file.is_open()) return false;
     try {
         Json::Value datapkg;
-        reader.parse(cache_file, datapkg);
+        if (!reader.parse(cache_file, datapkg)) {
+            return false;
+        }
         parseDataPkg(game, datapkg);
     }
     catch (...) {
@@ -1159,7 +1194,10 @@ void cacheDataPkgs(Json::Value& serverPkgs) {
         std::filesystem::path cache_path = getDataPkgCachePath(game, hash);
 
         parseDataPkg(game, serverPkgs["games"][game]);
-        WriteFileJSON(serverPkgs["games"][game], cache_path.string());
+        if (!WriteFileJSON(serverPkgs["games"][game], cache_path.string())) {
+            logfunc("AP: Game Cache write failed for " + game);
+            continue; // Keep the game marked outdated so it is fetched again later
+        }
 
         datapkg_outdated_games.erase(game);
         logfunc("AP: Game Cache updated for " + game);
