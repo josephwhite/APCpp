@@ -1146,6 +1146,7 @@ bool WriteFileJSON(Json::Value val, std::string path) {
             return false;
         }
     }
+    return true;
 }
 
 std::filesystem::path getDataPkgCachePath(const std::string& game, const std::string& hash)
