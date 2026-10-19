@@ -796,6 +796,13 @@ bool parse_response(std::string msg, std::string &request) {
             logfunc("AP: Authenticated");
             ap_player_id = root[i]["slot"].asInt(); // MUST be called before resetitemvalues, otherwise PrivateServerDataPrefix, GetPlayerID return broken values!
             ap_player_team = root[i]["team"].asInt();
+            // Learn our own game from slot_info (Text Clients can connect with an empty game).
+            {
+                const auto slot_key = std::to_string(ap_player_id);
+                if (root[i]["slot_info"].isMember(slot_key) && ap_game.empty()) {
+                    ap_game = root[i]["slot_info"][slot_key]["game"].asString();
+                }
+            }
             resetItemValues();
 
             for (unsigned int j = 0; j < root[i]["checked_locations"].size(); j++) {
